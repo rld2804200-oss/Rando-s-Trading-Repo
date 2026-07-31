@@ -1,0 +1,855 @@
+// This Pine Script(R) code is subject to the terms of the Mozilla Public License 2.0
+// at https://mozilla.org/MPL/2.0/
+// (c) ADXAE
+
+//@version=6
+// ============================================================================
+// Regression Channel Auto
+// ============================================================================
+// Draws a least-squares linear regression channel over either:
+//
+// 1. An automatically selected best-fit lookback length.
+// 2. A fixed user-defined lookback length.
+//
+// AUTO LENGTH MODE
+// The script evaluates every length between the minimum and maximum settings
+// and selects the window with the highest absolute Pearson correlation.
+//
+// CHANNEL STRUCTURE
+// - Dashed center line: linear regression estimate.
+// - Inner bands: regression line +/- inner residual standard deviation.
+// - Outer bands: regression line +/- outer residual standard deviation.
+//
+// IMPORTANT LIMITATIONS
+// - The channel is recalculated whenever the latest bar changes.
+// - In Auto mode, the selected length can also change.
+// - Historical channel placement is descriptive and not predictive.
+// - A high Pearson correlation describes linearity, not future performance.
+// - Outer-band contact is not automatically a reversal signal.
+// ============================================================================
+
+indicator(
+     title           = "Regression Channel Auto",
+     shorttitle      = "RegChan Auto",
+     overlay         = true,
+     max_bars_back   = 600,
+     max_lines_count = 10,
+     max_labels_count = 10
+)
+
+// ============================================================================
+// Channel settings
+// ============================================================================
+
+string mode = input.string(
+     defval  = "Auto (best fit)",
+     title   = "Length mode",
+     options = ["Auto (best fit)", "Fixed"],
+     group   = "Channel",
+     tooltip = "Auto mode searches for the lookback length with the highest absolute Pearson correlation. Fixed mode uses the selected fixed length."
+)
+
+int fixedLength = input.int(
+     defval  = 100,
+     title   = "Fixed length",
+     minval  = 10,
+     maxval  = 500,
+     group   = "Channel",
+     tooltip = "Used only when Length mode is set to Fixed."
+)
+
+int autoMinLength = input.int(
+     defval  = 40,
+     title   = "Auto minimum length",
+     minval  = 10,
+     maxval  = 500,
+     group   = "Channel",
+     tooltip = "Shortest lookback window evaluated in Auto mode."
+)
+
+int autoMaxLength = input.int(
+     defval  = 350,
+     title   = "Auto maximum length",
+     minval  = 20,
+     maxval  = 500,
+     group   = "Channel",
+     tooltip = "Longest lookback window evaluated in Auto mode."
+)
+
+source = input.source(
+     defval = close,
+     title  = "Source",
+     group  = "Channel"
+)
+
+string residualMode = input.string(
+     defval  = "Sample (n - 2)",
+     title   = "Residual deviation mode",
+     options = ["Sample (n - 2)", "Population (n)"],
+     group   = "Channel",
+     tooltip = "Sample mode uses n - 2 degrees of freedom, which is common for linear regression residual standard error. Population mode divides by n."
+)
+
+float flatThresholdAtr = input.float(
+     defval  = 0.03,
+     title   = "Flat threshold",
+     minval  = 0.0,
+     maxval  = 0.50,
+     step    = 0.01,
+     group   = "Channel",
+     tooltip = "Minimum regression slope expressed as ATR per bar. Slopes below this threshold are classified as flat."
+)
+
+// ============================================================================
+// Band settings
+// ============================================================================
+
+float innerDeviation = input.float(
+     defval  = 1.0,
+     title   = "Inner band deviation",
+     minval  = 0.25,
+     maxval  = 3.0,
+     step    = 0.25,
+     group   = "Bands",
+     tooltip = "Distance of the inner bands from the regression line, measured in residual standard deviations."
+)
+
+float outerDeviation = input.float(
+     defval  = 2.0,
+     title   = "Outer band deviation",
+     minval  = 0.50,
+     maxval  = 4.0,
+     step    = 0.25,
+     group   = "Bands",
+     tooltip = "Distance of the outer bands from the regression line, measured in residual standard deviations."
+)
+
+bool showInnerBands = input.bool(
+     defval = true,
+     title  = "Show inner bands",
+     group  = "Bands"
+)
+
+bool showChannelFill = input.bool(
+     defval = true,
+     title  = "Show channel fill",
+     group  = "Bands"
+)
+
+// ============================================================================
+// Display settings
+// ============================================================================
+
+int extendRightBars = input.int(
+     defval  = 12,
+     title   = "Extend channel right",
+     minval  = 0,
+     maxval  = 100,
+     group   = "Display",
+     tooltip = "Projects the current regression channel forward visually. This is a reference extension only, not a forecast."
+)
+
+bool showInfoLabel = input.bool(
+     defval = false,
+     title  = "Show info label",
+     group  = "Display",
+     tooltip = "OFF by default. Shows selected length, absolute Pearson R, slope per bar, and current price position relative to the channel."
+)
+
+string infoLabelSizeInput = input.string(
+     defval  = "Small",
+     title   = "Info label size",
+     options = ["Tiny", "Small", "Normal"],
+     group   = "Display"
+)
+
+bool showBreakMarker = input.bool(
+     defval = false,
+     title  = "Show current outer break marker",
+     group  = "Display",
+     tooltip = "OFF by default. Shows a small marker only when the latest price is outside the outer channel."
+)
+
+// ============================================================================
+// Alert settings
+// ============================================================================
+
+bool confirmBreakAlerts = input.bool(
+     defval = true,
+     title  = "Confirm break alerts on bar close",
+     group  = "Alerts",
+     tooltip = "When enabled, outside-channel alerts trigger only after the bar is confirmed."
+)
+
+// ============================================================================
+// Color settings
+// ============================================================================
+
+color risingColor = input.color(
+     defval  = color.rgb(72, 166, 126),
+     title   = "Rising channel",
+     group   = "Colors",
+     tooltip = "Color used when the regression slope is classified as rising."
+)
+
+color fallingColor = input.color(
+     defval  = color.rgb(201, 91, 101),
+     title   = "Falling channel",
+     group   = "Colors",
+     tooltip = "Color used when the regression slope is classified as falling."
+)
+
+color flatColor = input.color(
+     defval  = color.rgb(137, 145, 158),
+     title   = "Flat channel",
+     group   = "Colors",
+     tooltip = "Color used when the regression slope is inside the flat threshold."
+)
+
+int innerBandTransparency = input.int(
+     defval  = 55,
+     title   = "Inner band transparency",
+     minval  = 0,
+     maxval  = 100,
+     group   = "Colors",
+     tooltip = "Higher values make the inner bands more transparent."
+)
+
+int channelFillTransparency = input.int(
+     defval  = 92,
+     title   = "Channel fill transparency",
+     minval  = 0,
+     maxval  = 100,
+     group   = "Colors",
+     tooltip = "Higher values make the channel background more transparent."
+)
+
+color infoTextColor = input.color(
+     defval = color.white,
+     title  = "Info label text",
+     group  = "Colors"
+)
+
+int infoLabelTransparency = input.int(
+     defval = 12,
+     title  = "Info label transparency",
+     minval = 0,
+     maxval = 100,
+     group  = "Colors"
+)
+
+// ============================================================================
+// Line settings
+// ============================================================================
+
+int centerLineWidth = input.int(
+     defval = 1,
+     title  = "Center line width",
+     minval = 1,
+     maxval = 4,
+     group  = "Lines"
+)
+
+int innerLineWidth = input.int(
+     defval = 1,
+     title  = "Inner band width",
+     minval = 1,
+     maxval = 4,
+     group  = "Lines"
+)
+
+int outerLineWidth = input.int(
+     defval = 2,
+     title  = "Outer band width",
+     minval = 1,
+     maxval = 5,
+     group  = "Lines"
+)
+
+string centerLineStyleInput = input.string(
+     defval  = "Dashed",
+     title   = "Center line style",
+     options = ["Solid", "Dashed", "Dotted"],
+     group   = "Lines"
+)
+
+string innerLineStyleInput = input.string(
+     defval  = "Solid",
+     title   = "Inner band style",
+     options = ["Solid", "Dashed", "Dotted"],
+     group   = "Lines"
+)
+
+string outerLineStyleInput = input.string(
+     defval  = "Solid",
+     title   = "Outer band style",
+     options = ["Solid", "Dashed", "Dotted"],
+     group   = "Lines"
+)
+
+// ============================================================================
+// Base calculations
+// ============================================================================
+
+float atrValue = ta.atr(14)
+
+infoLabelSize =
+     infoLabelSizeInput == "Tiny" ? size.tiny :
+     infoLabelSizeInput == "Normal" ? size.normal :
+     size.small
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+getLineStyle(string styleInput) =>
+    styleInput == "Dotted" ? line.style_dotted :
+     styleInput == "Dashed" ? line.style_dashed :
+     line.style_solid
+
+updateLine(
+     line lineId,
+     int xStart,
+     float yStart,
+     int xEnd,
+     float yEnd,
+     color lineColor,
+     string lineStyle,
+     int lineWidth
+ ) =>
+
+    line result = lineId
+
+    if na(result)
+        result := line.new(
+             x1     = xStart,
+             y1     = yStart,
+             x2     = xEnd,
+             y2     = yEnd,
+             xloc   = xloc.bar_index,
+             extend = extend.none,
+             color  = lineColor,
+             style  = lineStyle,
+             width  = lineWidth
+        )
+    else
+        line.set_xy1(result, xStart, yStart)
+        line.set_xy2(result, xEnd, yEnd)
+        line.set_color(result, lineColor)
+        line.set_style(result, lineStyle)
+        line.set_width(result, lineWidth)
+
+    result
+
+updateInfoLabel(
+     label labelId,
+     int x,
+     float y,
+     string labelText,
+     color labelColor
+ ) =>
+
+    label result = labelId
+
+    if na(result)
+        result := label.new(
+             x      = x,
+             y      = y,
+             text   = labelText,
+             xloc   = xloc.bar_index,
+             style  = label.style_label_left,
+             color  = labelColor,
+             textcolor = infoTextColor,
+             size   = infoLabelSize
+        )
+    else
+        label.set_x(result, x)
+        label.set_y(result, y)
+        label.set_text(result, labelText)
+        label.set_color(result, labelColor)
+        label.set_textcolor(result, infoTextColor)
+        label.set_size(result, infoLabelSize)
+
+    result
+
+// ============================================================================
+// Persistent drawing objects
+// ============================================================================
+
+var line centerLine = na
+
+var line upperInnerLine = na
+var line lowerInnerLine = na
+
+var line upperOuterLine = na
+var line lowerOuterLine = na
+
+var linefill channelFill = na
+
+var label infoLabel = na
+
+// ============================================================================
+// Current channel state for alerts and optional marker
+// ============================================================================
+
+var float selectedLengthValue = na
+var float absoluteCorrelationValue = na
+var float chartSlopeValue = na
+
+var float currentUpperOuterValue = na
+var float currentLowerOuterValue = na
+var float currentUpperInnerValue = na
+var float currentLowerInnerValue = na
+
+var bool closeAboveOuter = false
+var bool closeBelowOuter = false
+
+// Reset current-bar alert states.
+closeAboveOuter := false
+closeBelowOuter := false
+
+// ============================================================================
+// Fit and draw only on the latest chart bar
+// ============================================================================
+
+if barstate.islast and bar_index + 1 >= 10
+
+    int availableBars = bar_index + 1
+
+    // ========================================================================
+    // Select lookback length
+    // ========================================================================
+
+    int selectedLength = math.min(fixedLength, availableBars)
+
+    if mode == "Auto (best fit)"
+
+        int minimumLength = math.min(
+             autoMinLength,
+             availableBars
+        )
+
+        int maximumLength = math.min(
+             math.max(autoMaxLength, autoMinLength),
+             availableBars
+        )
+
+        float sumX  = 0.0
+        float sumY  = 0.0
+        float sumXX = 0.0
+        float sumXY = 0.0
+        float sumYY = 0.0
+
+        int bestLength = minimumLength
+        float bestAbsoluteCorrelation = -1.0
+
+        for index = 0 to maximumLength - 1
+
+            float yValue = source[index]
+            float xValue = float(index)
+
+            sumX  += xValue
+            sumY  += yValue
+            sumXX += xValue * xValue
+            sumXY += xValue * yValue
+            sumYY += yValue * yValue
+
+            int sampleSize = index + 1
+
+            if sampleSize >= minimumLength
+
+                float sampleSizeFloat = float(sampleSize)
+
+                float varianceX =
+                     sumXX -
+                     sumX * sumX / sampleSizeFloat
+
+                float varianceY =
+                     sumYY -
+                     sumY * sumY / sampleSizeFloat
+
+                float covarianceXY =
+                     sumXY -
+                     sumX * sumY / sampleSizeFloat
+
+                if varianceX > 0.0 and varianceY > 0.0
+
+                    float absoluteCorrelation =
+                         math.abs(covarianceXY) /
+                         math.sqrt(varianceX * varianceY)
+
+                    if absoluteCorrelation > bestAbsoluteCorrelation
+                        bestAbsoluteCorrelation := absoluteCorrelation
+                        bestLength := sampleSize
+
+        selectedLength := bestLength
+
+    // ========================================================================
+    // Calculate regression statistics
+    // ========================================================================
+
+    float sumSource = 0.0
+
+    for index = 0 to selectedLength - 1
+        sumSource += source[index]
+
+    float meanY = sumSource / float(selectedLength)
+    float meanX = float(selectedLength - 1) / 2.0
+
+    float centeredCrossProduct = 0.0
+    float centeredYSumSquares  = 0.0
+
+    for index = 0 to selectedLength - 1
+
+        float sourceDeviation = source[index] - meanY
+        float indexDeviation  = float(index) - meanX
+
+        centeredCrossProduct +=
+             indexDeviation * sourceDeviation
+
+        centeredYSumSquares +=
+             sourceDeviation * sourceDeviation
+
+    float lengthFloat = float(selectedLength)
+
+    float centeredXSumSquares =
+         lengthFloat *
+         (lengthFloat * lengthFloat - 1.0) /
+         12.0
+
+    float reverseSlope =
+         centeredXSumSquares > 0.0 ?
+         centeredCrossProduct / centeredXSumSquares :
+         0.0
+
+    float signedCorrelation =
+         centeredXSumSquares > 0.0 and centeredYSumSquares > 0.0 ?
+         centeredCrossProduct / math.sqrt(centeredXSumSquares * centeredYSumSquares) :
+         0.0
+
+    float absoluteCorrelation =
+         math.abs(signedCorrelation)
+
+    float regressionError =
+         math.max(
+             centeredYSumSquares -
+             reverseSlope * centeredCrossProduct,
+             0.0
+         )
+
+    float residualDivisor =
+         residualMode == "Sample (n - 2)" ?
+         math.max(lengthFloat - 2.0, 1.0) :
+         lengthFloat
+
+    float residualDeviation =
+         math.sqrt(
+             regressionError /
+             residualDivisor
+         )
+
+    float chartSlope = -reverseSlope
+
+    float currentRegressionValue =
+         meanY +
+         chartSlope * meanX
+
+    float oldestRegressionValue =
+         meanY -
+         chartSlope * meanX
+
+    float projectedRegressionValue =
+         currentRegressionValue +
+         chartSlope * float(extendRightBars)
+
+    int firstBarIndex =
+         bar_index -
+         (selectedLength - 1)
+
+    int lastBarIndex =
+         bar_index +
+         extendRightBars
+
+    // ========================================================================
+    // Determine channel direction
+    // ========================================================================
+
+    float slopeThreshold =
+         nz(atrValue) *
+         flatThresholdAtr
+
+    bool risingTrend =
+         chartSlope > slopeThreshold
+
+    bool fallingTrend =
+         chartSlope < -slopeThreshold
+
+    color directionColor =
+         risingTrend  ? risingColor  :
+         fallingTrend ? fallingColor :
+         flatColor
+
+    color innerColor =
+         color.new(
+             directionColor,
+             showInnerBands ?
+             innerBandTransparency :
+             100
+         )
+
+    color fillColor =
+         color.new(
+             directionColor,
+             showChannelFill ?
+             channelFillTransparency :
+             100
+         )
+
+    color infoBgColor =
+         color.new(
+             directionColor,
+             infoLabelTransparency
+         )
+
+    // ========================================================================
+    // Calculate channel boundaries
+    // ========================================================================
+
+    float oldestUpperInner =
+         oldestRegressionValue +
+         innerDeviation * residualDeviation
+
+    float projectedUpperInner =
+         projectedRegressionValue +
+         innerDeviation * residualDeviation
+
+    float oldestLowerInner =
+         oldestRegressionValue -
+         innerDeviation * residualDeviation
+
+    float projectedLowerInner =
+         projectedRegressionValue -
+         innerDeviation * residualDeviation
+
+    float oldestUpperOuter =
+         oldestRegressionValue +
+         outerDeviation * residualDeviation
+
+    float projectedUpperOuter =
+         projectedRegressionValue +
+         outerDeviation * residualDeviation
+
+    float oldestLowerOuter =
+         oldestRegressionValue -
+         outerDeviation * residualDeviation
+
+    float projectedLowerOuter =
+         projectedRegressionValue -
+         outerDeviation * residualDeviation
+
+    float currentUpperInner =
+         currentRegressionValue +
+         innerDeviation * residualDeviation
+
+    float currentLowerInner =
+         currentRegressionValue -
+         innerDeviation * residualDeviation
+
+    float currentUpperOuter =
+         currentRegressionValue +
+         outerDeviation * residualDeviation
+
+    float currentLowerOuter =
+         currentRegressionValue -
+         outerDeviation * residualDeviation
+
+    // ========================================================================
+    // Store current state for alerts and markers
+    // ========================================================================
+
+    selectedLengthValue := float(selectedLength)
+    absoluteCorrelationValue := absoluteCorrelation
+    chartSlopeValue := chartSlope
+
+    currentUpperOuterValue := currentUpperOuter
+    currentLowerOuterValue := currentLowerOuter
+    currentUpperInnerValue := currentUpperInner
+    currentLowerInnerValue := currentLowerInner
+
+    closeAboveOuter := close > currentUpperOuter
+    closeBelowOuter := close < currentLowerOuter
+
+    // ========================================================================
+    // Draw center line
+    // ========================================================================
+
+    centerLine := updateLine(
+         centerLine,
+         firstBarIndex,
+         oldestRegressionValue,
+         lastBarIndex,
+         projectedRegressionValue,
+         directionColor,
+         getLineStyle(centerLineStyleInput),
+         centerLineWidth
+    )
+
+    // ========================================================================
+    // Draw inner channel
+    // ========================================================================
+
+    upperInnerLine := updateLine(
+         upperInnerLine,
+         firstBarIndex,
+         oldestUpperInner,
+         lastBarIndex,
+         projectedUpperInner,
+         innerColor,
+         getLineStyle(innerLineStyleInput),
+         innerLineWidth
+    )
+
+    lowerInnerLine := updateLine(
+         lowerInnerLine,
+         firstBarIndex,
+         oldestLowerInner,
+         lastBarIndex,
+         projectedLowerInner,
+         innerColor,
+         getLineStyle(innerLineStyleInput),
+         innerLineWidth
+    )
+
+    // ========================================================================
+    // Draw outer channel
+    // ========================================================================
+
+    upperOuterLine := updateLine(
+         upperOuterLine,
+         firstBarIndex,
+         oldestUpperOuter,
+         lastBarIndex,
+         projectedUpperOuter,
+         directionColor,
+         getLineStyle(outerLineStyleInput),
+         outerLineWidth
+    )
+
+    lowerOuterLine := updateLine(
+         lowerOuterLine,
+         firstBarIndex,
+         oldestLowerOuter,
+         lastBarIndex,
+         projectedLowerOuter,
+         directionColor,
+         getLineStyle(outerLineStyleInput),
+         outerLineWidth
+    )
+
+    // ========================================================================
+    // Create or update channel fill
+    // ========================================================================
+
+    if na(channelFill)
+        channelFill := linefill.new(
+             upperOuterLine,
+             lowerOuterLine,
+             fillColor
+        )
+    else
+        linefill.set_color(
+             channelFill,
+             fillColor
+        )
+
+    // ========================================================================
+    // Optional info label
+    // ========================================================================
+
+    if showInfoLabel
+
+        string pricePosition =
+             closeAboveOuter ? "Above outer band" :
+             closeBelowOuter ? "Below outer band" :
+             close > currentUpperInner ? "Upper zone" :
+             close < currentLowerInner ? "Lower zone" :
+             "Inside channel"
+
+        string directionText =
+             risingTrend ? "Rising" :
+             fallingTrend ? "Falling" :
+             "Flat"
+
+        string infoText =
+             "Regression Channel" +
+             "\nMode: " + mode +
+             "\nLength: " + str.tostring(selectedLength) +
+             "\nAbs R: " + str.tostring(absoluteCorrelation, "#.###") +
+             "\nSlope/bar: " + str.tostring(chartSlope, format.mintick) +
+             "\nState: " + directionText +
+             "\nPrice: " + pricePosition
+
+        float labelY =
+             closeAboveOuter ? high + nz(atrValue) * 0.75 :
+             closeBelowOuter ? low - nz(atrValue) * 0.75 :
+             projectedUpperOuter
+
+        infoLabel := updateInfoLabel(
+             infoLabel,
+             lastBarIndex + 1,
+             labelY,
+             infoText,
+             infoBgColor
+        )
+    else
+        if not na(infoLabel)
+            label.delete(infoLabel)
+            infoLabel := na
+
+// ============================================================================
+// Current outer-channel break markers
+// ============================================================================
+
+plotshape(
+     showBreakMarker and closeAboveOuter,
+     title     = "Above outer channel",
+     style     = shape.triangleup,
+     location  = location.abovebar,
+     color     = risingColor,
+     size      = size.tiny,
+     text      = "OUT"
+)
+
+plotshape(
+     showBreakMarker and closeBelowOuter,
+     title     = "Below outer channel",
+     style     = shape.triangledown,
+     location  = location.belowbar,
+     color     = fallingColor,
+     size      = size.tiny,
+     text      = "OUT"
+)
+
+// ============================================================================
+// Alerts
+// ============================================================================
+
+bool alertReady =
+     not confirmBreakAlerts or barstate.isconfirmed
+
+alertcondition(
+     closeAboveOuter and alertReady,
+     title   = "Close above upper outer channel",
+     message = "Price is above the upper outer regression channel."
+)
+
+alertcondition(
+     closeBelowOuter and alertReady,
+     title   = "Close below lower outer channel",
+     message = "Price is below the lower outer regression channel."
+)
+
+// ============================================================================
+// End of file
+// ============================================================================
+
