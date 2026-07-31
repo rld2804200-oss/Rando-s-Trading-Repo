@@ -1,0 +1,78 @@
+//@version=6
+indicator("Auto Trendline", overlay=true)
+
+int pivotLength     = input.int(10,   "Pivot Lookback Length", minval=2)
+int maxLines        = input.int(5,    "Max Trendlines",        minval=1, maxval=500)
+bool showSupport    = input.bool(true,  "Show Support Lines")
+bool showResistance = input.bool(true,  "Show Resistance Lines")
+color supportColor  = input.color(color.green, "Support Color")
+color resistColor   = input.color(color.red,   "Resistance Color")
+int lineWidth       = input.int(1,    "Line Width",            minval=1, maxval=4)
+int lineLength      = input.int(10,   "Line Length",           minval=1)
+
+float pivHigh = ta.pivothigh(high, pivotLength, pivotLength)
+float pivLow  = ta.pivotlow(low,  pivotLength, pivotLength)
+
+var float[] phPrices = array.new_float(0)
+var int[]   phBars   = array.new_int(0)
+var float[] plPrices = array.new_float(0)
+var int[]   plBars   = array.new_int(0)
+
+if not na(pivHigh) and barstate.isconfirmed
+    array.push(phPrices, pivHigh)
+    array.push(phBars,   bar_index - pivotLength)
+    if array.size(phPrices) > maxLines + 1
+        array.shift(phPrices)
+        array.shift(phBars)
+
+if not na(pivLow) and barstate.isconfirmed
+    array.push(plPrices, pivLow)
+    array.push(plBars,   bar_index - pivotLength)
+    if array.size(plPrices) > maxLines + 1
+        array.shift(plPrices)
+        array.shift(plBars)
+
+var line[] resistLines  = array.new_line(0)
+var line[] supportLines = array.new_line(0)
+
+if barstate.islast
+    for ln in resistLines
+        line.delete(ln)
+    array.clear(resistLines)
+
+    for ln in supportLines
+        line.delete(ln)
+    array.clear(supportLines)
+
+    if showResistance and array.size(phPrices) >= 2
+        int count     = array.size(phPrices)
+        int drawCount = math.min(count - 1, maxLines)
+        for i = 0 to drawCount - 1
+            int   x1 = array.get(phBars,   count - 2 - i)
+            float y1 = array.get(phPrices, count - 2 - i)
+            int   x2 = array.get(phBars,   count - 1 - i)
+            float y2 = array.get(phPrices, count - 1 - i)
+            int   barDist = math.max(x2 - x1, 1)
+            float slope   = (y2 - y1) / barDist
+            int   x3 = x2 + lineLength
+            float y3 = y2 + slope * lineLength
+            line ln  = line.new(x1, y1, x3, y3, extend=extend.none, color=resistColor, width=lineWidth)
+            array.push(resistLines, ln)
+
+    if showSupport and array.size(plPrices) >= 2
+        int count     = array.size(plPrices)
+        int drawCount = math.min(count - 1, maxLines)
+        for i = 0 to drawCount - 1
+            int   x1 = array.get(plBars,   count - 2 - i)
+            float y1 = array.get(plPrices, count - 2 - i)
+            int   x2 = array.get(plBars,   count - 1 - i)
+            float y2 = array.get(plPrices, count - 1 - i)
+            int   barDist = math.max(x2 - x1, 1)
+            float slope   = (y2 - y1) / barDist
+            int   x3 = x2 + lineLength
+            float y3 = y2 + slope * lineLength
+            line ln  = line.new(x1, y1, x3, y3, extend=extend.none, color=supportColor, width=lineWidth)
+            array.push(supportLines, ln)
+
+plotshape(not na(pivHigh) and showResistance, style=shape.triangledown, location=location.abovebar, color=resistColor,  size=size.small, offset=-pivotLength, title="Resistance Pivot")
+plotshape(not na(pivLow)  and showSupport,    style=shape.triangleup,   location=location.belowbar, color=supportColor, size=size.small, offset=-pivotLength, title="Support Pivot")
