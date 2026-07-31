@@ -1,0 +1,297 @@
+//@version=6
+// RanChann_1.0.16
+// Version History:
+// 1.0.16 - Update lines in place instead of delete+new (preserves alerts)
+// 1.0.15 - Added minOffset filter
+// 1.0.14 - Fixed previous-channel shift logic, restored missing prev alert inputs,
+//          improved auto-adjust values, added arrows + info table, cleaned drawing
+// 1.0.13 - Fixed shift logic to only shift when complete channel exists
+// 1.0.9  - Added alerts for both previous and current channels
+// 1.0.8  - Added 2-channel display capability
+// 1.0.7  - Made tolerance value adjustable via input
+// 1.0.6  - Added 55-point tolerance for alert triggers
+// 1.0.5  - Removed timeframe input due to erratic results, reverted to current chart data
+// 1.0.4  - Added alert conditions for price breakouts and breakdowns
+// 1.0.3  - Simplified inputs: removed rLeft/rRight, renamed gLeft/gRight to leftExtension/rightExtension
+// 1.0.2  - Added auto-adjust pivot toggle by timeframe
+// 1.0.1  - Initial version with green/red/mid channel lines
+indicator("RanChann_1.0.16", overlay=true, max_lines_count=500)
+
+// ─── Inputs ────────────────────────────────────────────────
+left              = input.int(10,  "Pivot Left")
+right             = input.int(3,  "Pivot Right")
+autoAdjustPivots  = input.bool(true, "Auto-Adjust Pivots by Timeframe")
+
+leftExtension     = input.int(1,  "Left Extension")
+rightExtension    = input.int(50, "Right Extension")
+
+tolerance         = input.int(5,  "Alert Tolerance (points)")
+minOffset         = ta.atr(14) * 0.8
+
+// Current channel alerts
+alertUpper        = input.bool(true,  "Alert on Upper Line")
+alertMid          = input.bool(false,  "Alert on Mid Line")
+alertLower        = input.bool(true,  "Alert on Lower Line")
+
+// Previous channel alerts
+alertUpperPrev        = input.bool(true,  "Alert on Upper Line (Previous)")
+alertMidPrev          = input.bool(false,  "Alert on Mid Line (Previous)")
+alertLowerPrev        = input.bool(true,  "Alert on Lower Line (Previous)")
+
+// ─── Auto-adjust ───────────────────────────────────────────
+tfInMinutes   = timeframe.in_seconds() / 60
+adjustedLeft  = autoAdjustPivots ?
+     (tfInMinutes >= 1440 ? 20 :
+      tfInMinutes >= 240   ? 20 :
+      tfInMinutes == 60   ? 20:
+      tfInMinutes == 30   ? 14  :
+      tfInMinutes == 15   ? 12 :
+      tfInMinutes == 5    ? 10 : 3) : left
+adjustedRight = autoAdjustPivots ? adjustedLeft : right
+
+// ─── Pivot detection ───────────────────────────────────────
+ph = ta.pivothigh(high, adjustedLeft, adjustedRight)
+pl = ta.pivotlow(low, adjustedLeft, adjustedRight)
+
+// ─── Current channel state ─────────────────────────────────
+var float l1y = na
+var int   l1x = na
+var float l2y = na
+var int   l2x = na
+var float hy  = na
+var int   hx  = na
+
+// ─── Previous channel state ────────────────────────────────
+var float prevL1y = na
+var int   prevL1x = na
+var float prevL2y = na
+var int   prevL2x = na
+var float prevHy  = na
+var int   prevHx  = na
+
+// ─── Update logic (shift first, then update) ───────────────
+bool newPivot = not na(pl) or not na(ph)
+
+if newPivot and not na(l1y) and not na(l2y) and not na(hy) and l1x != l2x
+    prevL1y := l1y
+    prevL1x := l1x
+    prevL2y := l2y
+    prevL2x := l2x
+    prevHy  := hy
+    prevHx  := hx
+
+if not na(pl)
+    l1y := l2y
+    l1x := l2x
+    l2y := pl
+    l2x := bar_index - adjustedRight
+
+if not na(ph)
+    hy := ph
+    hx := bar_index - adjustedRight
+
+// ─── Slope & offset (current) ──────────────────────────────
+var float slope  = na
+var float offset = na
+if not na(l1y) and not na(l2y) and l1x != l2x
+    slope := (l2y - l1y) / (l2x - l1x)
+if not na(slope) and not na(hy)
+    lowerAtHx = l1y + slope * (hx - l1x)
+    offset    := hy - lowerAtHx
+
+// ─── Slope & offset (previous) ─────────────────────────────
+var float prevSlope  = na
+var float prevOffset = na
+if not na(prevL1y) and not na(prevL2y) and prevL1x != prevL2x
+    prevSlope := (prevL2y - prevL1y) / (prevL2x - prevL1x)
+if not na(prevSlope) and not na(prevHy)
+    prevLowerAtHx = prevL1y + prevSlope * (prevHx - prevL1x)
+    prevOffset    := prevHy - prevLowerAtHx
+
+// ─── Line handles ──────────────────────────────────────────
+var line lower         = na
+var line upper         = na
+var line mid           = na
+var line quarter       = na
+var line threeQuarter  = na
+
+var line prevLower         = na
+var line prevUpper         = na
+var line prevMid           = na
+var line prevQuarter       = na
+var line prevThreeQuarter  = na
+
+// ─── Draw current channel (update in place) ────────────────
+if barstate.islast and not na(l1y) and not na(l2y) and not na(hy) and l1x != l2x and offset > minOffset
+    lx1 = l1x - leftExtension
+    ly1 = l1y + slope * (lx1 - l1x)
+    lx2 = l2x + rightExtension
+    ly2 = l2y + slope * (lx2 - l2x)
+
+    ux1 = l1x - leftExtension
+    uy1 = hy + slope * (ux1 - hx)
+    ux2 = l2x + rightExtension
+    uy2 = hy + slope * (ux2 - hx)
+
+    midY = hy - offset / 2
+    mx1  = l1x - leftExtension
+    my1  = midY + slope * (mx1 - hx)
+    mx2  = l2x + rightExtension
+    my2  = midY + slope * (mx2 - hx)
+
+    qy1 = (hy - offset) + offset * 0.25 + slope * (mx1 - hx)
+    qy2 = (hy - offset) + offset * 0.25 + slope * (mx2 - hx)
+
+    tqy1 = (hy - offset) + offset * 0.75 + slope * (mx1 - hx)
+    tqy2 = (hy - offset) + offset * 0.75 + slope * (mx2 - hx)
+
+    if na(lower)
+        lower := line.new(lx1, ly1, lx2, ly2, color=color.green, width=3)
+    else
+        line.set_xy1(lower, lx1, ly1)
+        line.set_xy2(lower, lx2, ly2)
+
+    if na(upper)
+        upper := line.new(ux1, uy1, ux2, uy2, color=color.red, width=3)
+    else
+        line.set_xy1(upper, ux1, uy1)
+        line.set_xy2(upper, ux2, uy2)
+
+    if na(mid)
+        mid := line.new(mx1, my1, mx2, my2, color=color.white, width=2, style=line.style_dashed)
+    else
+        line.set_xy1(mid, mx1, my1)
+        line.set_xy2(mid, mx2, my2)
+
+    if na(quarter)
+        quarter := line.new(mx1, qy1, mx2, qy2, color=color.yellow, width=2, style=line.style_dotted)
+    else
+        line.set_xy1(quarter, mx1, qy1)
+        line.set_xy2(quarter, mx2, qy2)
+
+    if na(threeQuarter)
+        threeQuarter := line.new(mx1, tqy1, mx2, tqy2, color=color.yellow, width=2, style=line.style_dotted)
+    else
+        line.set_xy1(threeQuarter, mx1, tqy1)
+        line.set_xy2(threeQuarter, mx2, tqy2)
+
+// ─── Draw previous channel (update in place) ───────────────
+if barstate.islast and not na(prevL1y) and not na(prevL2y) and not na(prevHy) and prevL1x != prevL2x and prevOffset > minOffset
+    plx1 = prevL1x - leftExtension
+    ply1 = prevL1y + prevSlope * (plx1 - prevL1x)
+    plx2 = prevL2x + rightExtension
+    ply2 = prevL2y + prevSlope * (plx2 - prevL2x)
+
+    pux1 = prevL1x - leftExtension
+    puy1 = prevHy + prevSlope * (pux1 - prevHx)
+    pux2 = prevL2x + rightExtension
+    puy2 = prevHy + prevSlope * (pux2 - prevHx)
+
+    pmidY = prevHy - prevOffset / 2
+    pmx1  = prevL1x - leftExtension
+    pmy1  = pmidY + prevSlope * (pmx1 - prevHx)
+    pmx2  = prevL2x + rightExtension
+    pmy2  = pmidY + prevSlope * (pmx2 - prevHx)
+
+    pqy1 = (prevHy - prevOffset) + prevOffset * 0.25 + prevSlope * (pmx1 - prevHx)
+    pqy2 = (prevHy - prevOffset) + prevOffset * 0.25 + prevSlope * (pmx2 - prevHx)
+
+    ptqy1 = (prevHy - prevOffset) + prevOffset * 0.75 + prevSlope * (pmx1 - prevHx)
+    ptqy2 = (prevHy - prevOffset) + prevOffset * 0.75 + prevSlope * (pmx2 - prevHx)
+
+    if na(prevLower)
+        prevLower := line.new(plx1, ply1, plx2, ply2, color=color.new(color.green, 65), width=2)
+    else
+        line.set_xy1(prevLower, plx1, ply1)
+        line.set_xy2(prevLower, plx2, ply2)
+
+    if na(prevUpper)
+        prevUpper := line.new(pux1, puy1, pux2, puy2, color=color.new(color.red, 65), width=2)
+    else
+        line.set_xy1(prevUpper, pux1, puy1)
+        line.set_xy2(prevUpper, pux2, puy2)
+
+    if na(prevMid)
+        prevMid := line.new(pmx1, pmy1, pmx2, pmy2, color=color.new(color.white, 65), width=2, style=line.style_dashed)
+    else
+        line.set_xy1(prevMid, pmx1, pmy1)
+        line.set_xy2(prevMid, pmx2, pmy2)
+
+    if na(prevQuarter)
+        prevQuarter := line.new(pmx1, pqy1, pmx2, pqy2, color=color.new(color.yellow, 65), width=2, style=line.style_dotted)
+    else
+        line.set_xy1(prevQuarter, pmx1, pqy1)
+        line.set_xy2(prevQuarter, pmx2, pqy2)
+
+    if na(prevThreeQuarter)
+        prevThreeQuarter := line.new(pmx1, ptqy1, pmx2, ptqy2, color=color.new(color.yellow, 65), width=2, style=line.style_dotted)
+    else
+        line.set_xy1(prevThreeQuarter, pmx1, ptqy1)
+        line.set_xy2(prevThreeQuarter, pmx2, ptqy2)
+
+// ─── Active pivot markers (arrows only) ────────────────────
+var label lblL1 = na
+var label lblL2 = na
+var label lblH  = na
+
+if barstate.islast
+    label.delete(lblL1)
+    label.delete(lblL2)
+    label.delete(lblH)
+
+    if not na(l1y) and not na(l1x)
+        lblL1 := label.new(l1x, l1y, "▼",
+             style=label.style_none,
+             textcolor=color.green,
+             size=size.normal)
+
+    if not na(l2y) and not na(l2x)
+        lblL2 := label.new(l2x, l2y, "▲",
+             style=label.style_none,
+             textcolor=color.green,
+             size=size.normal)
+
+    if not na(hy) and not na(hx)
+        lblH := label.new(hx, hy, "▼",
+             style=label.style_none,
+             textcolor=color.red,
+             size=size.normal)
+
+// ─── Info table (upper left) ───────────────────────────────
+var table infoTable = table.new(position.top_left, 2, 2, bgcolor=color.new(color.black, 70), border_width=1)
+if barstate.islast
+    table.cell(infoTable, 0, 0, "Left",  text_color=color.gray,  text_size=size.small)
+    table.cell(infoTable, 1, 0, str.tostring(adjustedLeft), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Right", text_color=color.gray,  text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(adjustedRight), text_color=color.white, text_size=size.small)
+
+// ─── Alert values ──────────────────────────────────────────
+upperValue          = not na(slope) and not na(hy)     ? hy + slope * (bar_index - hx) : na
+lowerValue          = not na(slope) and not na(l1y)    ? l1y + slope * (bar_index - l1x) : na
+midValue            = not na(slope) and not na(offset) ? hy - offset/2 + slope * (bar_index - hx) : na
+quarterValue        = not na(slope) and not na(offset) ? (hy - offset) + offset*0.25 + slope * (bar_index - hx) : na
+threeQuarterValue   = not na(slope) and not na(offset) ? (hy - offset) + offset*0.75 + slope * (bar_index - hx) : na
+
+prevUpperValue      = not na(prevSlope) and not na(prevHy)     ? prevHy + prevSlope * (bar_index - prevHx) : na
+prevLowerValue      = not na(prevSlope) and not na(prevL1y)    ? prevL1y + prevSlope * (bar_index - prevL1x) : na
+prevMidValue        = not na(prevSlope) and not na(prevOffset) ? prevHy - prevOffset/2 + prevSlope * (bar_index - prevHx) : na
+prevQuarterValue    = not na(prevSlope) and not na(prevOffset) ? (prevHy - prevOffset) + prevOffset*0.25 + prevSlope * (bar_index - prevHx) : na
+prevThreeQuarterValue = not na(prevSlope) and not na(prevOffset) ? (prevHy - prevOffset) + prevOffset*0.75 + prevSlope * (bar_index - prevHx) : na
+
+// ─── Alerts – Current ──────────────────────────────────────
+alertcondition(alertUpper and ta.crossover(close, upperValue + tolerance),        "Upper Breakout",          "Price broke above upper channel")
+alertcondition(alertUpper and ta.crossunder(close, upperValue - tolerance),       "Upper Breakdown",         "Price broke below upper channel")
+alertcondition(alertLower and ta.crossover(close, lowerValue + tolerance),        "Lower Breakout",          "Price broke above lower channel")
+alertcondition(alertLower and ta.crossunder(close, lowerValue - tolerance),       "Lower Breakdown",         "Price broke below lower channel")
+alertcondition(alertMid and ta.crossover(close, midValue + tolerance),            "Mid Cross Up",            "Price crossed above midline")
+alertcondition(alertMid and ta.crossunder(close, midValue - tolerance),           "Mid Cross Down",          "Price crossed below midline")
+
+// ─── Alerts – Previous ─────────────────────────────────────
+alertcondition(alertUpperPrev and ta.crossover(close, prevUpperValue + tolerance),        "Upper Breakout (Prev)",          "Price broke above previous upper channel")
+alertcondition(alertUpperPrev and ta.crossunder(close, prevUpperValue - tolerance),       "Upper Breakdown (Prev)",         "Price broke below previous upper channel")
+alertcondition(alertLowerPrev and ta.crossover(close, prevLowerValue + tolerance),        "Lower Breakout (Prev)",          "Price broke above previous lower channel")
+alertcondition(alertLowerPrev and ta.crossunder(close, prevLowerValue - tolerance),       "Lower Breakdown (Prev)",         "Price broke below previous lower channel")
+alertcondition(alertMidPrev and ta.crossover(close, prevMidValue + tolerance),            "Mid Cross Up (Prev)",            "Price crossed above previous midline")
+alertcondition(alertMidPrev and ta.crossunder(close, prevMidValue - tolerance),           "Mid Cross Down (Prev)",          "Price crossed below previous midline")
+
+plot(na, display=display.none)
