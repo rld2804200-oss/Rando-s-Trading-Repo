@@ -1,0 +1,109 @@
+//@version=4  
+study("TrenLinez_1.0.2", overlay=true)  
+  
+// Auto_Bars toggle  
+Auto_Bars = input(title="Auto_Bars (Use All Data)", type=input.bool, defval=false)  
+  
+// Input toggles for lowest low bar lengths  
+lowestLowLength = input(title="Lowest Low Bar Length", type=input.integer, minval=1, defval=200)  
+nextLowestLowLength = input(title="Next Lowest Low Bar Length", type=input.integer, minval=1, defval=200)  
+  
+// Input toggles for highest high bar lengths  
+highestHighLength = input(title="Highest High Bar Length", type=input.integer, minval=1, defval=200)  
+nextHighestHighLength = input(title="Next Highest High Bar Length", type=input.integer, minval=1, defval=200)  
+  
+// Extension parameter (shared by both lines)  
+extendBars = input(title="Extend Right by Bars", type=input.integer, minval=0, defval=136)  
+  
+// Variables to store line parameters (not line objects)  
+var float sup_slope = na  
+var float sup_intercept = na  
+var float sup_start_bar = na  
+var float sup_end_bar = na  
+  
+var float res_slope = na  
+var float res_intercept = na  
+var float res_start_bar = na  
+var float res_end_bar = na  
+  
+if barstate.islast  
+    // Determine which lengths to use based on Auto_Bars toggle  
+    useLowestLowLength = Auto_Bars ? bar_index : lowestLowLength  
+    useNextLowestLowLength = Auto_Bars ? bar_index : nextLowestLowLength  
+    useHighestHighLength = Auto_Bars ? bar_index : highestHighLength  
+    useNextHighestHighLength = Auto_Bars ? bar_index : nextHighestHighLength  
+      
+    // Find lowest lows for green line  
+    float lowest_y1 = 1000000  
+    float lowest_x1 = 0  
+    float lowest_y2 = 1000000  
+    float lowest_x2 = 0  
+      
+    for i = 1 to useLowestLowLength  
+        if low[i] < lowest_y1  
+            lowest_y1 := low[i]  
+            lowest_x1 := i  
+      
+    for j = 1 to useNextLowestLowLength  
+        if j != lowest_x1 and low[j] < lowest_y2  
+            lowest_y2 := low[j]  
+            lowest_x2 := j  
+      
+    // Find highest highs for red line  
+    float highest_y1 = 0  
+    float highest_x1 = 0  
+    float highest_y2 = 0  
+    float highest_x2 = 0  
+      
+    for k = 1 to useHighestHighLength  
+        if high[k] > highest_y1  
+            highest_y1 := high[k]  
+            highest_x1 := k  
+      
+    for l = 1 to useNextHighestHighLength  
+        if l != highest_x1 and high[l] > highest_y2  
+            highest_y2 := high[l]  
+            highest_x2 := l  
+      
+    // Calculate and store support line parameters using ABSOLUTE bar indices  
+    if lowest_x1 != 0 and lowest_x2 != 0  
+        sup_slope := (lowest_y2 - lowest_y1) / (bar_index[lowest_x2] - bar_index[lowest_x1])  
+        sup_intercept := lowest_y1 - sup_slope * bar_index[lowest_x1]  
+        sup_start_bar := bar_index[lowest_x1]  
+        sup_end_bar := bar_index[lowest_x2] + extendBars  
+      
+    // Calculate and store resistance line parameters using ABSOLUTE bar indices  
+    if highest_x1 != 0 and highest_x2 != 0  
+        res_slope := (highest_y2 - highest_y1) / (bar_index[highest_x2] - bar_index[highest_x1])  
+        res_intercept := highest_y1 - res_slope * bar_index[highest_x1]  
+        res_start_bar := bar_index[highest_x1]  
+        res_end_bar := bar_index[highest_x2] + extendBars  
+  
+// Calculate line prices mathematically on every bar  
+supportPrice = not na(sup_slope) and bar_index >= sup_start_bar and bar_index <= sup_end_bar ? sup_slope * bar_index + sup_intercept : na  
+resistancePrice = not na(res_slope) and bar_index >= res_start_bar and bar_index <= res_end_bar ? res_slope * bar_index + res_intercept : na  
+  
+// Support line touches/crosses  
+supportTouch = not na(supportPrice) and (low <= supportPrice or high >= supportPrice)  
+supportBreak = not na(supportPrice) and crossunder(close, supportPrice)  
+supportBounce = not na(supportPrice) and crossover(close, supportPrice)  
+  
+// Resistance line touches/crosses    
+resistanceTouch = not na(resistancePrice) and (low <= resistancePrice or high >= resistancePrice)  
+resistanceBreak = not na(resistancePrice) and crossover(close, resistancePrice)  
+resistanceBounce = not na(resistancePrice) and crossunder(close, resistancePrice)  
+  
+// Alert conditions  
+alertcondition(supportTouch, title="Support Line Touch/Cross", message="Price touched or crossed support line")  
+alertcondition(supportBreak, title="Support Line Break", message="Price broke below support line")  
+alertcondition(supportBounce, title="Support Line Bounce", message="Price bounced off support line")  
+alertcondition(resistanceTouch, title="Resistance Line Touch/Cross", message="Price touched or crossed resistance line")  
+alertcondition(resistanceBreak, title="Resistance Line Break", message="Price broke above resistance line")  
+alertcondition(resistanceBounce, title="Resistance Line Bounce", message="Price bounced off resistance line")  
+  
+// Draw lines for visualization (only on last bar)  
+if barstate.islast  
+    if not na(sup_slope)  
+        line.new(x1=int(sup_start_bar), y1=sup_slope * sup_start_bar + sup_intercept, x2=int(sup_end_bar), y2=sup_slope * sup_end_bar + sup_intercept, width=3, color=color.green, extend=extend.none)  
+    if not na(res_slope)  
+        line.new(x1=int(res_start_bar), y1=res_slope * res_start_bar + res_intercept, x2=int(res_end_bar), y2=res_slope * res_end_bar + res_intercept, width=3, color=color.red, extend=extend.none)
