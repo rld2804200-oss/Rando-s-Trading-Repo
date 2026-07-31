@@ -1,0 +1,344 @@
+//@version=6
+indicator("Rando-Auto Fib Extension", overlay=true)
+
+depthTooltip = "The minimum number of bars that will be taken into account when calculating the indicator."
+depth = input.int(title="Depth", defval=21, minval=2, inline = "Pivots", tooltip=depthTooltip)
+reverse = input(false, "Reverse", display = display.none)
+var extendLeft = input(false, "Extend Left    |    Extend Right", inline = "Extend Lines", display = display.none)
+var extendRight = input(true, "", inline = "Extend Lines", display = display.none)
+var extending = extend.none
+if extendLeft and extendRight
+    extending := extend.both
+if extendLeft and not extendRight
+    extending := extend.left
+if not extendLeft and extendRight
+    extending := extend.right
+prices = input(true, "Show Prices", display = display.none)
+levels = input(true, "Show Levels", inline = "Levels", display = display.none)
+levelsFormat = input.string("Percent", options = ["Values", "Percent"], inline = "Levels", display = display.none, active = levels)
+labelsPosition = input.string("Left", "Labels Position", options = ["Left", "Right"], display = display.none)
+backgroundTransparency = input.int(100, "Background Transparency", minval = 0, maxval = 100)
+
+upperThreshold = 0.236
+lowerThreshold = 1.0
+
+import TradingView/ZigZag/7 as zigzag
+
+pivots(src, length, isHigh) =>
+    if bar_index >= length
+        price = nz(src[length])
+        found = true
+        for i = 0 to length * 2
+            if (isHigh and src[i] > price) or (not isHigh and src[i] < price)
+                found := false
+                break
+        if found
+            chart.point.from_time(time[length], price)
+
+update()=>
+    var line lineLastHL = na
+    var line lineLastLH = na
+    var line lineLast = na
+
+    var chart.point[] pivotsH = array.new<chart.point>()
+    var chart.point lastH = na
+    var chart.point[] pivotsL = array.new<chart.point>()
+    var chart.point lastL = na
+
+    var isHighLast = false
+    var float startPrice = na
+    var float endPrice = na
+
+    H = pivots(high, depth / 2, true)
+    L = pivots(low, depth / 2, false)
+
+    countPivotsH = array.size(pivotsH)
+    countPivotsL = array.size(pivotsL)
+
+    if countPivotsH > 0 and countPivotsL > 0
+        lastH := array.get(pivotsH, countPivotsH-1)
+        lastL := array.get(pivotsL, countPivotsL-1)
+        isHighLast := lastH.time > lastL.time
+        if isHighLast
+            if not na(H)
+                if H.price > lastH.price
+                    array.set(pivotsH, countPivotsH-1, H)
+                H := na
+        else
+            if not na(L)
+                if L.price < lastL.price
+                    array.set(pivotsL, countPivotsL-1, L)
+                L := na
+
+    if not na(H)
+        array.push(pivotsH, H)
+
+    if not na(L)
+        array.push(pivotsL, L)
+
+    if barstate.islast and array.size(pivotsH) > 0 and array.size(pivotsL) > 0
+        pivotsHCopy = array.copy(pivotsH)
+        pivotsLCopy = array.copy(pivotsL)
+        while array.size(pivotsHCopy) > 0 and array.size(pivotsLCopy) > 0
+            lastH := array.pop(pivotsHCopy)
+            lastL := array.pop(pivotsLCopy)
+
+            isHighLast := lastH.time > lastL.time
+            pivots = isHighLast ? pivotsHCopy : pivotsLCopy
+
+            for i = array.size(pivots)-1 to 0
+                if i < 0
+                    break
+                p = array.get(pivots, i)
+                if p.time < lastL.time
+                    break
+                betterPrice = isHighLast ? p.price > lastH.price : p.price < lastL.price
+                if p.price > lastH.price
+                    lastH := array.pop(pivots)
+                else
+                    array.remove(pivots, i)
+
+            if array.size(pivotsHCopy) == 0 or array.size(pivotsLCopy) == 0
+                break
+
+            isHighLast := lastH.time > lastL.time
+            pivots := isHighLast ? pivotsHCopy : pivotsLCopy
+
+            prevPivot = array.get(pivots, array.size(pivots)-1)
+            startPrice := prevPivot.price
+
+            if isHighLast
+                endPrice := lastL.price
+                diff = math.abs(startPrice - endPrice)
+                if lastH.price > endPrice + diff * lowerThreshold or lastH.price < endPrice + diff * upperThreshold
+                    array.push(pivotsLCopy, lastL)
+                    continue
+                line.delete(lineLastHL)
+                line.delete(lineLastLH)
+                lineLastHL := line.new(prevPivot, lastL, color=color.red, width=1, style=line.style_dashed, xloc = xloc.bar_time)
+                lineLastLH := line.new(lastL, lastH, color=color.green, width=1, style=line.style_dashed, xloc = xloc.bar_time)
+                lineLast := lineLastLH
+            else
+                endPrice := lastH.price
+                diff = math.abs(startPrice - endPrice)
+                if lastL.price < endPrice - diff * lowerThreshold or lastL.price > endPrice - diff * upperThreshold
+                    array.push(pivotsHCopy, lastH)
+                    continue
+                line.delete(lineLastHL)
+                line.delete(lineLastLH)
+                lineLastLH := line.new(prevPivot, lastH, color=color.red, width=1, style=line.style_dashed, xloc = xloc.bar_time)
+                lineLastHL := line.new(lastH, lastL, color=color.green, width=1, style=line.style_dashed, xloc = xloc.bar_time)
+                lineLast := lineLastHL
+            break
+    diff = (isHighLast ? -1 : 1) * math.abs(startPrice - endPrice)
+    offset = isHighLast ? line.get_y1(lineLastLH) - line.get_y2(lineLastLH) : line.get_y1(lineLastHL) - line.get_y2(lineLastHL)
+    offset := (isHighLast ? -1 : 1) * math.abs(offset)
+	if barstate.islast and na(lineLast)
+		runtime.error("Not enough data to calculate Auto Fib Extension on the current symbol. Change the chart's timeframe to a lower one or select a smaller calculation depth using the indicator's `Depth` settings.")
+
+    [endPrice - offset, diff, lineLast]
+
+[endPrice, diff, lineLast] = update()
+
+_draw_line(price, col) =>
+    var id = line.new(time, price, time, price, color=col, width=1, extend=extending, xloc = xloc.bar_time)
+    if not na(lineLast)
+        line.set_xy1(id, line.get_x1(lineLast), price)
+        line.set_xy2(id, line.get_x2(lineLast), price)
+    id
+
+_draw_label(price, txt, txtColor) =>
+    if not na(price)
+        x = labelsPosition == "Left" ? line.get_x1(lineLast) : not extendRight ? line.get_x2(lineLast) : time
+        labelStyle = labelsPosition == "Left" ? label.style_label_right : label.style_label_left
+        align = labelsPosition == "Left" ? text.align_right : text.align_left
+        labelsAlignStrLeft = txt + '\n ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏ \n'
+        labelsAlignStrRight = '       ' + txt + '\n ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏  ‏ \n'
+        labelsAlignStr = labelsPosition == "Left" ? labelsAlignStrLeft : labelsAlignStrRight
+        var id = label.new(x=x, y=price, text=labelsAlignStr, textcolor=txtColor, style=labelStyle, textalign=align, color=#00000000, xloc = xloc.bar_time)
+        label.set_xy(id, x, price)
+        label.set_text(id, labelsAlignStr)
+        label.set_textcolor(id, txtColor)
+
+_wrap(txt) =>
+    "(" + str.tostring(txt, format.mintick) + ")"
+
+_label_txt(level, price) =>
+    if not na(price)
+        l = levelsFormat == "Values" ? str.tostring(level) : str.tostring(level * 100) + "%"
+        (levels ? l : "") + (prices ? _wrap(price) : "")
+
+_crossing_level(sr, r) =>
+    (r > sr and r < sr[1]) or (r < sr and r > sr[1])
+
+
+processLevel(show, value, colorL, lineIdOther, alertOn, ep, df) =>
+    float m = value
+    r = ep + ((reverse ? -1 : 1) * df * m)
+    if show
+        lineId = _draw_line(r, colorL)
+        _draw_label(r, _label_txt(m, r), colorL)
+        if alertOn and _crossing_level(close, r)
+            alert("AutoFib " + syminfo.ticker + " crossed " + str.tostring(value) + " @ " + str.tostring(r, format.mintick), alert.freq_once_per_bar)
+        if not na(lineIdOther)
+            linefill.new(lineId, lineIdOther, color = color.new(colorL, backgroundTransparency))
+        lineId
+    else
+        lineIdOther
+
+show_0  = input(true, "", inline = "Level0", display = display.none)
+value_0 = input(0, "", inline = "Level0", display = display.none, active = show_0)
+color_0 = input(#ffffff, "", inline = "Level0", display = display.none, active = show_0)
+
+show_0_236  = input(true, "", inline = "Level0", display = display.none)
+value_0_236 = input(0.236, "", inline = "Level0", display = display.none, active = show_0_236)
+color_0_236 = input(#ffffff, "", inline = "Level0", display = display.none, active = show_0_236)
+
+show_0_382  = input(true, "", inline = "Level1", display = display.none)
+value_0_382 = input(0.382, "", inline = "Level1", display = display.none, active = show_0_382)
+color_0_382 = input(color.rgb(251, 255, 0), "", inline = "Level1", display = display.none, active = show_0_382)
+
+show_0_5  = input(true, "", inline = "Level1", display = display.none)
+value_0_5 = input(0.5, "", inline = "Level1", display = display.none, active = show_0_5)
+color_0_5 = input(color.rgb(255, 255, 0), "", inline = "Level1", display = display.none, active = show_0_5)
+
+show_0_618  = input(true, "", inline = "Level2", display = display.none)
+value_0_618 = input(0.618, "", inline = "Level2", display = display.none, active = show_0_618)
+color_0_618 = input(color.rgb(255, 255, 0), "", inline = "Level2", display = display.none, active = show_0_618)
+
+show_0_65  = input(false, "", inline = "Level2", display = display.none)
+value_0_65 = input(0.65, "", inline = "Level2", display = display.none, active = show_0_65)
+color_0_65 = input(#ffffff, "", inline = "Level2", display = display.none, active = show_0_65)
+
+show_0_786  = input(true, "", inline = "Level3", display = display.none)
+value_0_786 = input(0.786, "", inline = "Level3", display = display.none, active = show_0_786)
+color_0_786 = input(#ffffff, "", inline = "Level3", display = display.none, active = show_0_786)
+
+show_1  = input(true, "", inline = "Level3", display = display.none)
+value_1 = input(1, "", inline = "Level3", display = display.none, active = show_1)
+color_1 = input(#ffffff, "", inline = "Level3", display = display.none, active = show_1)
+
+show_1_272  = input(false, "", inline = "Level4", display = display.none)
+value_1_272 = input(1.272, "", inline = "Level4", display = display.none, active = show_1_272)
+color_1_272 = input(#ffffff, "", inline = "Level4", display = display.none, active = show_1_272)
+
+show_1_414  = input(false, "", inline = "Level4", display = display.none)
+value_1_414 = input(1.414, "", inline = "Level4", display = display.none, active = show_1_414)
+color_1_414 = input(#ffffff, "", inline = "Level4", display = display.none, active = show_1_414)
+
+show_1_618  = input(true, "", inline = "Level5", display = display.none)
+value_1_618 = input(1.618, "", inline = "Level5", display = display.none, active = show_1_618)
+color_1_618 = input(#ffffff, "", inline = "Level5", display = display.none, active = show_1_618)
+
+show_1_65  = input(false, "", inline = "Level5", display = display.none)
+value_1_65 = input(1.65, "", inline = "Level5", display = display.none, active = show_1_65)
+color_1_65 = input(#ffffff, "", inline = "Level5", display = display.none, active = show_1_65)
+
+show_2_618  = input(true, "", inline = "Level6", display = display.none)
+value_2_618 = input(2.618, "", inline = "Level6", display = display.none, active = show_2_618)
+color_2_618 = input(#ffffff, "", inline = "Level6", display = display.none, active = show_2_618)
+
+show_2_65  = input(false, "", inline = "Level6", display = display.none)
+value_2_65 = input(2.65, "", inline = "Level6", display = display.none, active = show_2_65)
+color_2_65 = input(#ffffff, "", inline = "Level6", display = display.none, active = show_2_65)
+
+show_3_618  = input(true, "", inline = "Level7", display = display.none)
+value_3_618 = input(3.618, "", inline = "Level7", display = display.none, active = show_3_618)
+color_3_618 = input(#ffffff, "", inline = "Level7", display = display.none, active = show_3_618)
+
+show_3_65  = input(false, "", inline = "Level7", display = display.none)
+value_3_65 = input(3.65, "", inline = "Level7", display = display.none, active = show_3_65)
+color_3_65 = input(#ffffff, "", inline = "Level7", display = display.none, active = show_3_65)
+
+show_4_236  = input(true, "", inline = "Level8", display = display.none)
+value_4_236 = input(4.236, "", inline = "Level8", display = display.none, active = show_4_236)
+color_4_236 = input(#ffffff, "", inline = "Level8", display = display.none, active = show_4_236)
+
+show_4_618  = input(false, "", inline = "Level8", display = display.none)
+value_4_618 = input(4.618, "", inline = "Level8", display = display.none, active = show_4_618)
+color_4_618 = input(#ffffff, "", inline = "Level8", display = display.none, active = show_4_618)
+
+show_neg_0_236  = input(false, "", inline = "Level9", display = display.none)
+value_neg_0_236 = input(-0.236, "", inline = "Level9", display = display.none, active = show_neg_0_236)
+color_neg_0_236 = input(#ffffff, "", inline = "Level9", display = display.none, active = show_neg_0_236)
+
+show_neg_0_382  = input(false, "", inline = "Level9", display = display.none)
+value_neg_0_382 = input(-0.382, "", inline = "Level9", display = display.none, active = show_neg_0_382)
+color_neg_0_382 = input(#ffffff, "", inline = "Level9", display = display.none, active = show_neg_0_382)
+
+show_neg_0_618  = input(false, "", inline = "Level10", display = display.none)
+value_neg_0_618 = input(-0.618, "", inline = "Level10", display = display.none, active = show_neg_0_618)
+color_neg_0_618 = input(#ffffff, "", inline = "Level10", display = display.none, active = show_neg_0_618)
+
+show_neg_0_65  = input(false, "", inline = "Level10", display = display.none)
+value_neg_0_65 = input(-0.65, "", inline = "Level10", display = display.none, active = show_neg_0_65)
+color_neg_0_65 = input(#ffffff, "", inline = "Level10", display = display.none, active = show_neg_0_65)
+
+alert_neg_0_65  = input(false, "Alert", inline = "Level10")
+alert_neg_0_618 = input(false, "Alert", inline = "Level10")
+alert_neg_0_382 = input(false, "Alert", inline = "Level9")
+alert_neg_0_236 = input(false, "Alert", inline = "Level9")
+alert_0         = input(false, "Alert", inline = "Level0")
+alert_0_236     = input(false, "Alert", inline = "Level0")
+alert_0_382     = input(false, "Alert", inline = "Level1")
+alert_0_5       = input(false, "Alert", inline = "Level1")
+alert_0_618     = input(false, "Alert", inline = "Level2")
+alert_0_65      = input(false, "Alert", inline = "Level2")
+alert_0_786     = input(false, "Alert", inline = "Level3")
+alert_1         = input(false, "Alert", inline = "Level3")
+alert_1_272     = input(false, "Alert", inline = "Level4")
+alert_1_414     = input(false, "Alert", inline = "Level4")
+alert_1_618     = input(false, "Alert", inline = "Level5")
+alert_1_65      = input(false, "Alert", inline = "Level5")
+alert_2_618     = input(false, "Alert", inline = "Level6")
+alert_2_65      = input(false, "Alert", inline = "Level6")
+alert_3_618     = input(false, "Alert", inline = "Level7")
+alert_3_65      = input(false, "Alert", inline = "Level7")
+alert_4_236     = input(false, "Alert", inline = "Level8")
+alert_4_618     = input(false, "Alert", inline = "Level8")
+
+alertcondition(alert_neg_0_65 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * -0.65)), title="Fib -0.65 Cross", message="AutoFib {{ticker}} crossed -0.65")
+alertcondition(alert_neg_0_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * -0.618)), title="Fib -0.618 Cross", message="AutoFib {{ticker}} crossed -0.618")
+alertcondition(alert_neg_0_382 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * -0.382)), title="Fib -0.382 Cross", message="AutoFib {{ticker}} crossed -0.382")
+alertcondition(alert_neg_0_236 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * -0.236)), title="Fib -0.236 Cross", message="AutoFib {{ticker}} crossed -0.236")
+alertcondition(alert_0 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0)), title="Fib 0 Cross", message="AutoFib {{ticker}} crossed 0")
+alertcondition(alert_0_236 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.236)), title="Fib 0.236 Cross", message="AutoFib {{ticker}} crossed 0.236")
+alertcondition(alert_0_382 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.382)), title="Fib 0.382 Cross", message="AutoFib {{ticker}} crossed 0.382")
+alertcondition(alert_0_5 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.5)), title="Fib 0.5 Cross", message="AutoFib {{ticker}} crossed 0.5")
+alertcondition(alert_0_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.618)), title="Fib 0.618 Cross", message="AutoFib {{ticker}} crossed 0.618")
+alertcondition(alert_0_65 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.65)), title="Fib 0.65 Cross", message="AutoFib {{ticker}} crossed 0.65")
+alertcondition(alert_0_786 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 0.786)), title="Fib 0.786 Cross", message="AutoFib {{ticker}} crossed 0.786")
+alertcondition(alert_1 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 1)), title="Fib 1 Cross", message="AutoFib {{ticker}} crossed 1")
+alertcondition(alert_1_272 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 1.272)), title="Fib 1.272 Cross", message="AutoFib {{ticker}} crossed 1.272")
+alertcondition(alert_1_414 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 1.414)), title="Fib 1.414 Cross", message="AutoFib {{ticker}} crossed 1.414")
+alertcondition(alert_1_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 1.618)), title="Fib 1.618 Cross", message="AutoFib {{ticker}} crossed 1.618")
+alertcondition(alert_1_65 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 1.65)), title="Fib 1.65 Cross", message="AutoFib {{ticker}} crossed 1.65")
+alertcondition(alert_2_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 2.618)), title="Fib 2.618 Cross", message="AutoFib {{ticker}} crossed 2.618")
+alertcondition(alert_2_65 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 2.65)), title="Fib 2.65 Cross", message="AutoFib {{ticker}} crossed 2.65")
+alertcondition(alert_3_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 3.618)), title="Fib 3.618 Cross", message="AutoFib {{ticker}} crossed 3.618")
+alertcondition(alert_3_65 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 3.65)), title="Fib 3.65 Cross", message="AutoFib {{ticker}} crossed 3.65")
+alertcondition(alert_4_236 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 4.236)), title="Fib 4.236 Cross", message="AutoFib {{ticker}} crossed 4.236")
+alertcondition(alert_4_618 and _crossing_level(close, endPrice + ((reverse ? -1 : 1) * diff * 4.618)), title="Fib 4.618 Cross", message="AutoFib {{ticker}} crossed 4.618")
+
+lineId0 = processLevel(show_neg_0_65, value_neg_0_65, color_neg_0_65, line(na), alert_neg_0_65, endPrice, diff)
+lineId1 = processLevel(show_neg_0_618, value_neg_0_618, color_neg_0_618, lineId0, alert_neg_0_618, endPrice, diff)
+lineId2 = processLevel(show_neg_0_382, value_neg_0_382, color_neg_0_382, lineId1, alert_neg_0_382, endPrice, diff)
+lineId3 = processLevel(show_neg_0_236, value_neg_0_236, color_neg_0_236, lineId2, alert_neg_0_236, endPrice, diff)
+lineId4 = processLevel(show_0, value_0, color_0, lineId3, alert_0, endPrice, diff)
+lineId5 = processLevel(show_0_236, value_0_236, color_0_236, lineId4, alert_0_236, endPrice, diff)
+lineId6 = processLevel(show_0_382, value_0_382, color_0_382, lineId5, alert_0_382, endPrice, diff)
+lineId7 = processLevel(show_0_5, value_0_5, color_0_5, lineId6, alert_0_5, endPrice, diff)
+lineId8 = processLevel(show_0_618, value_0_618, color_0_618, lineId7, alert_0_618, endPrice, diff)
+lineId9 = processLevel(show_0_65, value_0_65, color_0_65, lineId8, alert_0_65, endPrice, diff)
+lineId10 = processLevel(show_0_786, value_0_786, color_0_786, lineId9, alert_0_786, endPrice, diff)
+lineId11 = processLevel(show_1, value_1, color_1, lineId10, alert_1, endPrice, diff)
+lineId12 = processLevel(show_1_272, value_1_272, color_1_272, lineId11, alert_1_272, endPrice, diff)
+lineId13 = processLevel(show_1_414, value_1_414, color_1_414, lineId12, alert_1_414, endPrice, diff)
+lineId14 = processLevel(show_1_618, value_1_618, color_1_618, lineId13, alert_1_618, endPrice, diff)
+lineId15 = processLevel(show_1_65, value_1_65, color_1_65, lineId14, alert_1_65, endPrice, diff)
+lineId16 = processLevel(show_2_618, value_2_618, color_2_618, lineId15, alert_2_618, endPrice, diff)
+lineId17 = processLevel(show_2_65, value_2_65, color_2_65, lineId16, alert_2_65, endPrice, diff)
+lineId18 = processLevel(show_3_618, value_3_618, color_3_618, lineId17, alert_3_618, endPrice, diff)
+lineId19 = processLevel(show_3_65, value_3_65, color_3_65, lineId18, alert_3_65, endPrice, diff)
+lineId20 = processLevel(show_4_236, value_4_236, color_4_236, lineId19, alert_4_236, endPrice, diff)
+lineId21 = processLevel(show_4_618, value_4_618, color_4_618, lineId20, alert_4_618, endPrice, diff)
