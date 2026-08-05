@@ -58,8 +58,8 @@ DEFAULTS = {
     "SL_MODE": "points",  # Valid values: "percent" | "fixed" | "points"
     "SL_PERCENT": 5.0,
     "SL_TRIGGER_POINTS": 500.0,
-    "FIXED_SL_PRICE_BUY": <value>,   # used when side == 'buy' and SL_MODE == "fixed"
-    "FIXED_SL_PRICE_SELL": <value>,  # used when side == 'sell' and SL_MODE == "fixed"
+    "FIXED_SL_PRICE_BUY": <55555>,   # used when side == 'buy' and SL_MODE == "fixed"
+    "FIXED_SL_PRICE_SELL": <130000>,  # used when side == 'sell' and SL_MODE == "fixed"
     "SANDBOX_MODE": False,
     "ENV_FILE": "ThisNThat.env",
 }
