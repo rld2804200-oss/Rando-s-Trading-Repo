@@ -1,0 +1,149 @@
+C:\PyRanthon\PYCode\.venv\Scripts\python.exe "C:\PyRanthon\PYCode\TVWebhook_Work\Standalone marketsymbols.py" 
+Key: set
+Secret: set
+Password: set
+Loading markets...
+
+Total markets: 88
+
+=== SWAP / FUTURE SYMBOLS ===
+1000BONK/USDT:USDT              linear
+1000FLOKI/USDT:USDT             linear
+AAVE/USDT:USDT                  linear
+ADA/USDT:USDT                   linear
+AERO/USDT:USDT                  linear
+ALGO/USDT:USDT                  linear
+APE/USDT:USDT                   linear
+APT/USDT:USDT                   linear
+AR/USDT:USDT                    linear
+ARB/USDT:USDT                   linear
+ASTER/USDT:USDT                 linear
+ATOM/USDT:USDT                  linear
+AVAX/USDT:USDT                  linear
+AXL/USDT:USDT                   linear
+BCH/USDT:USDT                   linear
+BNB/USDT:USDT                   linear
+BRETT/USDT:USDT                 linear
+BTC/USD:USD                     linear
+BTC/USDC:USDC                   linear
+BTC/USDT:USDT                   linear
+CAKE/USDT:USDT                  linear
+CC/USDT:USDT                    linear
+CRV/USDT:USDT                   linear
+DASH/USDT:USDT                  linear
+DOGE/USDT:USDT                  linear
+DOT/USDT:USDT                   linear
+ENA/USDT:USDT                   linear
+ETC/USDT:USDT                   linear
+ETH/USD:USD                     linear
+ETH/USDC:USDC                   linear
+ETH/USDT:USDT                   linear
+ETHFI/USDT:USDT                 linear
+FARTCOIN/USDT:USDT              linear
+FET/USDT:USDT                   linear
+FIL/USDT:USDT                   linear
+GRAM/USDT:USDT                  linear
+HBAR/USDT:USDT                  linear
+HYPE/USDT:USDT                  linear
+ICP/USDT:USDT                   linear
+INJ/USDT:USDT                   linear
+JASMY/USDT:USDT                 linear
+JUP/USDT:USDT                   linear
+KAS/USDT:USDT                   linear
+LDO/USDT:USDT                   linear
+LINK/USDT:USDT                  linear
+LTC/USDT:USDT                   linear
+LUNA2/USDT:USDT                 linear
+M/USDT:USDT                     linear
+MNT/USDT:USDT                   linear
+MON/USDT:USDT                   linear
+NEAR/USDT:USDT                  linear
+NOT/USDT:USDT                   linear
+ONDO/USDT:USDT                  linear
+OP/USDT:USDT                    linear
+PENDLE/USDT:USDT                linear
+PENGU/USDT:USDT                 linear
+PEOPLE/USDT:USDT                linear
+PEPE/USDT:USDT                  linear
+POL/USDT:USDT                   linear
+POPCAT/USDT:USDT                linear
+PUMP/USDT:USDT                  linear
+QNT/USDT:USDT                   linear
+RENDER/USDT:USDT                linear
+SEI/USDT:USDT                   linear
+SHIB/USDT:USDT                  linear
+SOL/USDT:USDT                   linear
+SPX/USDT:USDT                   linear
+STRK/USDT:USDT                  linear
+STX/USDT:USDT                   linear
+SUI/USDT:USDT                   linear
+TAO/USDT:USDT                   linear
+TIA/USDT:USDT                   linear
+TRUMP/USDT:USDT                 linear
+TRX/USDT:USDT                   linear
+TURBO/USDT:USDT                 linear
+UNI/USDT:USDT                   linear
+VIRTUAL/USDT:USDT               linear
+WIF/USDT:USDT                   linear
+WLD/USDT:USDT                   linear
+WLFI/USDT:USDT                  linear
+XAUT/USDT:USDT                  linear
+XLM/USDT:USDT                   linear
+XMR/USDT:USDT                   linear
+XPL/USDT:USDT                   linear
+XRP/USDT:USDT                   linear
+ZEC/USDT:USDT                   linear
+ZEN/USDT:USDT                   linear
+ZK/USDT:USDT                    linear
+
+=== ALL SYMBOLS (first 50) ===
+1000BONK/USDT:USDT
+1000FLOKI/USDT:USDT
+AAVE/USDT:USDT
+ADA/USDT:USDT
+AERO/USDT:USDT
+ALGO/USDT:USDT
+APE/USDT:USDT
+APT/USDT:USDT
+AR/USDT:USDT
+ARB/USDT:USDT
+ASTER/USDT:USDT
+ATOM/USDT:USDT
+AVAX/USDT:USDT
+AXL/USDT:USDT
+BCH/USDT:USDT
+BNB/USDT:USDT
+BRETT/USDT:USDT
+BTC/USD:USD
+BTC/USDC:USDC
+BTC/USDT:USDT
+CAKE/USDT:USDT
+CC/USDT:USDT
+CRV/USDT:USDT
+DASH/USDT:USDT
+DOGE/USDT:USDT
+DOT/USDT:USDT
+ENA/USDT:USDT
+ETC/USDT:USDT
+ETH/USD:USD
+ETH/USDC:USDC
+ETH/USDT:USDT
+ETHFI/USDT:USDT
+FARTCOIN/USDT:USDT
+FET/USDT:USDT
+FIL/USDT:USDT
+GRAM/USDT:USDT
+HBAR/USDT:USDT
+HYPE/USDT:USDT
+ICP/USDT:USDT
+INJ/USDT:USDT
+JASMY/USDT:USDT
+JUP/USDT:USDT
+KAS/USDT:USDT
+LDO/USDT:USDT
+LINK/USDT:USDT
+LTC/USDT:USDT
+LUNA2/USDT:USDT
+M/USDT:USDT
+MNT/USDT:USDT
+MON/USDT:USDT
