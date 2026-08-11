@@ -38,7 +38,7 @@ DEFAULTS = {
     "SUBACCOUNT_NAME": "SUB BTC on BTC Short:",    # Name of the sub-account (shows in every log)
     "EXCHANGE": "phemex",                          # Exchange name for CCXT
     "REFUSE_SYMBOLS": ["XRP/USD:XRP"],             # symbols this bot will refuse (example: ["XRP/USDT:USDT", "XRP/USD:USD"])
-    "FORWARD_REFUSED_TO": "https://ran-bot.uk/",   # if refused, forward the whole webhook to this URL (leave empty = just skip)
+    "FORWARD_REFUSED_TO": "https://bot.io/",   # if refused, forward the whole webhook to this URL (leave empty = just skip)
     "ENABLE_FORWARDING": True,
     "ALWAYS_FORWARD": False,
     "SYMBOL": "BTC/USD:BTC",                       # Default symbol
