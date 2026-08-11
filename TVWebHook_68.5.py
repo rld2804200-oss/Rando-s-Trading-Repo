@@ -38,7 +38,7 @@ DEFAULTS = {
     "SUBACCOUNT_NAME": "SUB BTC on BTC Short:",    # Name of the sub-account (shows in every log)
     "EXCHANGE": "phemex",                          # Exchange name for CCXT
     "REFUSE_SYMBOLS": ["XRP/USD:XRP"],
-    "FORWARD_REFUSED_TO": "https://ran-bot.uk/",
+    "FORWARD_REFUSED_TO": "https://bot.io/",
     "ALWAYS_FORWARD": False,                       # true = always forward every alert (duplicate)
     "ENABLE_FORWARDING": True,                     # master switch — set false to disable all forwarding
     "SYMBOL": "BTC/USD:BTC",                       # Default symbol
