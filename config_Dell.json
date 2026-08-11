@@ -5,7 +5,7 @@
   "REFUSE_SYMBOLS": [
     "XRP/USD:XRP"
   ],
-  "FORWARD_REFUSED_TO": "https://ranbot.site/",
+  "FORWARD_REFUSED_TO": "https://bot.io/",
   "ENABLE_FORWARDING": true,
   "ALWAYS_FORWARD": false,
   "SYMBOL": "BTC/USD:BTC",
