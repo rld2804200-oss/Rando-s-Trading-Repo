@@ -2,7 +2,7 @@
   "PC_NAME": "MSI_LapTop_1",
   "SUBACCOUNT_NAME": "BloFin Main Acc:",
   "EXCHANGE": "blofin",
-  "REFUSE_SYMBOLS": [XRP/USD:USD],
+  "REFUSE_SYMBOLS": ["XRP/USD:USD"],
   "FORWARD_REFUSED_TO": "https://bot.io/",
   "ALWAYS_FORWARD": false,
   "ENABLE_FORWARDING": true,
