@@ -51,8 +51,6 @@
   "TRAILING_STOP_FIXED": 1000.0,
   "SANDBOX_MODE": false,
   "ENV_FILE": "Coin_M.env",
-  "KNOWN_SITES": [
-    "ran-bot.uk"
-  ],
+  "KNOWN_SITES": [  ],
   "USE_WEBHOOK_SYMBOL": true
 }
