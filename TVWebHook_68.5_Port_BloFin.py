@@ -38,7 +38,7 @@ DEFAULTS = {
     "SUBACCOUNT_NAME": "BloFin Acc.",                   # Name of the sub-account (shows in every log)
     "EXCHANGE": "blofin",                          # Exchange name for CCXT
     "REFUSE_SYMBOLS": ["XRP/USD:USD"],
-    "FORWARD_REFUSED_TO": "https://ranbot.site/",
+    "FORWARD_REFUSED_TO": "https://bot.io/",
     "ALWAYS_FORWARD": False,                       # true = always forward every alert (duplicate)
     "ENABLE_FORWARDING": True,                     # master switch — set false to disable all forwarding
     "SYMBOL": "BTC/USD:USD",                       # Default symbol
